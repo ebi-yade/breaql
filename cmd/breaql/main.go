@@ -12,8 +12,9 @@ import (
 )
 
 type Input struct {
-	Driver string `name:"driver" default:"mysql" help:"Database driver"`
-	Path   string `name:"path" default:"-" help:"Path to the SQL file"`
+	Driver   string `name:"driver" default:"mysql" help:"Database driver"`
+	Path     string `name:"path" default:"-" help:"Path to the SQL file"`
+	LogLevel string `name:"log-level" default:"info" help:"Log level"`
 }
 
 func main_() error {
@@ -25,6 +26,15 @@ func main_() error {
 	_, err = flagParser.Parse(os.Args[1:])
 	if err != nil {
 		return errors.Wrap(err, "error flagParser.Parse")
+	}
+
+	switch input.LogLevel {
+	case "debug":
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	case "info":
+		slog.SetLogLoggerLevel(slog.LevelInfo)
+	default:
+		return errors.Errorf("invalid log level: %s", input.LogLevel)
 	}
 
 	// Read the DDLs
@@ -58,7 +68,7 @@ func main_() error {
 	if len(changes) > 0 {
 		fmt.Println("-- Detected destructive changes:")
 		for i, change := range changes {
-			fmt.Printf("-- No.%d\n%s\n", i+1, change)
+			fmt.Printf("-- No.%d\n        %s\n", i+1, change)
 		}
 	} else {
 		fmt.Println("-- No destructive changes detected. --")

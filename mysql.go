@@ -1,43 +1,41 @@
 package breaql
 
 import (
+	"log/slog"
 	"strings"
 
+	"github.com/pingcap/errors"
 	"github.com/pingcap/tidb/pkg/parser"
 	"github.com/pingcap/tidb/pkg/parser/ast"
+
+	// Importing the following parser driver causes a build error.
 	//_ "github.com/pingcap/tidb/pkg/types/parser_driver"
+
 	_ "github.com/pingcap/tidb/pkg/parser/test_driver"
 )
 
+// RunMySQL parses the given (possibly composite) DDL statements and returns the breaking ones.
 func RunMySQL(sql string) ([]string, error) {
 	p := parser.New()
 	stmtNodes, _, err := p.Parse(sql, "", "")
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error p.Parse")
 	}
 
 	var breakingStmt []string
 
 	for _, stmtNode := range stmtNodes {
+		stmtText := strings.TrimSpace(stmtNode.Text())
+		slog.Debug("processing stmt", slog.String("stmt", stmtText))
+
 		switch stmt := stmtNode.(type) {
-		case *ast.DropTableStmt:
-			breakingStmt = append(breakingStmt, stmt.Text())
+		case *ast.DropTableStmt, *ast.TruncateTableStmt, *ast.DropDatabaseStmt, *ast.RenameTableStmt:
+			breakingStmt = append(breakingStmt, stmtText)
 		case *ast.AlterTableStmt:
 			for _, spec := range stmt.Specs {
-				switch spec.Tp {
-				case ast.AlterTableDropColumn:
-					breakingStmt = append(breakingStmt, stmt.Text())
-				case ast.AlterTableDropIndex:
-					breakingStmt = append(breakingStmt, stmt.Text())
-				case ast.AlterTableModifyColumn:
-					// Check for potential data loss when modifying column type
-					if spec.NewColumns != nil && len(spec.NewColumns) > 0 {
-						oldCol := spec.OldColumnName.String()
-						newCol := spec.NewColumns[0]
-						if !isCompatibleColumnModification(oldCol, newCol) {
-							breakingStmt = append(breakingStmt, stmt.Text())
-						}
-					}
+				if isBreakingAlterTableSpec(spec) {
+					breakingStmt = append(breakingStmt, stmtText)
+					break
 				}
 			}
 		}
@@ -46,27 +44,17 @@ func RunMySQL(sql string) ([]string, error) {
 	return breakingStmt, nil
 }
 
-func isCompatibleColumnModification(oldCol string, newCol *ast.ColumnDef) bool {
-	// This is a simplified check. In a real-world scenario, you'd want to do more thorough type compatibility checks.
-	oldType := strings.ToLower(oldCol)
-	newType := strings.ToLower(newCol.Tp.String())
+func isBreakingAlterTableSpec(spec *ast.AlterTableSpec) bool {
+	switch spec.Tp {
+	case ast.AlterTableDropColumn, ast.AlterTableDropIndex,
+		ast.AlterTableDropForeignKey, ast.AlterTableDropPrimaryKey:
+		return true
 
-	// Check for common incompatible type changes
-	incompatibleChanges := map[string][]string{
-		"int":       {"varchar", "text", "date", "datetime"},
-		"varchar":   {"int", "date", "datetime"},
-		"date":      {"int", "varchar"},
-		"datetime":  {"int", "varchar"},
-		"timestamp": {"int", "varchar"},
+	case ast.AlterTableModifyColumn:
+		// Note: False positives are accepted here as we cannot obtain the old column type.
+		return true
+
+	default:
+		return false
 	}
-
-	if incompatible, ok := incompatibleChanges[oldType]; ok {
-		for _, incType := range incompatible {
-			if strings.HasPrefix(newType, incType) {
-				return false
-			}
-		}
-	}
-
-	return true
 }
