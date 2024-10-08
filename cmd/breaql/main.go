@@ -45,7 +45,7 @@ func main_() error {
 	}
 
 	// Detect destructive changes
-	var changes []breaql.BreakingChange
+	var changes []string
 	switch input.Driver {
 	case "mysql":
 		changes, err = breaql.RunMySQL(string(ddl))
@@ -56,9 +56,9 @@ func main_() error {
 		return errors.Errorf("unsupported driver: %s", input.Driver)
 	}
 	if len(changes) > 0 {
-		fmt.Println("-- Detected destructive changes: --")
-		for _, change := range changes {
-			fmt.Printf("%s: %s\n", change.Type, change.Description)
+		fmt.Println("-- Detected destructive changes:")
+		for i, change := range changes {
+			fmt.Printf("-- No.%d\n%s\n", i+1, change)
 		}
 	} else {
 		fmt.Println("-- No destructive changes detected. --")

@@ -9,16 +9,20 @@ You can pass the DDL statements via stdin or as a file.
 
 ```shell
 echo '
-      CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(100));
-      ALTER TABLE users DROP COLUMN age;
+        CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(100));
+        ALTER TABLE users DROP COLUMN age;
+        DROP TABLE users;
   ' | go run cmd/breaql/main.go --driver mysql
 ```
 
 And then you will see the output like this:
 
-```
--- Detected destructive changes: --
-DROP COLUMN: Dropping column age from table users
+```sql
+-- Detected destructive changes:
+-- No.1
+      ALTER TABLE users DROP COLUMN age;
+-- No.2
+      DROP TABLE users;
 ```
 
 ## Note about Dependencies
