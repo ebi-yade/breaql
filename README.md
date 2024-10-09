@@ -24,20 +24,22 @@ You can pass the DDL statements via stdin or as a file.
 
 ```shell
 echo '
-        CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(100));
-        ALTER TABLE users DROP COLUMN age;
-        DROP TABLE users;
-  ' | breaql --driver mysql
+          CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(100));
+          ALTER TABLE users DROP COLUMN age;
+          DROP TABLE users;
+          DROP DATABASE foo;
+  ' | go run breaql --driver mysql
 ```
 
 And then you will see the output like this:
 
 ```sql
 -- Detected destructive changes:
--- No.1
-      ALTER TABLE users DROP COLUMN age;
--- No.2
-      DROP TABLE users;
+-- Table: users
+        ALTER TABLE users DROP COLUMN age;
+        DROP TABLE users;
+-- Database: foo
+        DROP DATABASE foo;
 ```
 
 ### via Go application
@@ -63,13 +65,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if len(changes) == 0 {
+	if changes.Exist() {
 		fmt.Println("No breaking changes detected")
 	} else {
 		fmt.Println("-- Detected destructive changes:")
-		for i, change := range changes {
-			fmt.Printf("-- No.%d\n        %s\n", i+1, change)
-		}
+		fmt.Printf(changes.FormatSQL())
 	}
 }
 

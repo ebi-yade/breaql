@@ -4,9 +4,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/pingcap/errors"
 	"github.com/pingcap/tidb/pkg/parser"
 	"github.com/pingcap/tidb/pkg/parser/ast"
+	"github.com/samber/lo"
 
 	// Importing the following parser driver causes a build error.
 	//_ "github.com/pingcap/tidb/pkg/types/parser_driver"
@@ -15,33 +15,44 @@ import (
 )
 
 // RunMySQL parses the given (possibly composite) DDL statements and returns the breaking ones.
-func RunMySQL(sql string) ([]string, error) {
+func RunMySQL(sql string) (BreakingChanges, error) {
 	p := parser.New()
 	stmtNodes, _, err := p.Parse(sql, "", "")
 	if err != nil {
-		return nil, errors.Wrap(err, "error p.Parse")
+		return BreakingChanges{}, &ParseError{original: err, Message: err.Error(), funcName: "parser.Parse"}
 	}
 
-	var breakingStmt []string
+	changes := NewBreakingChanges()
 
 	for _, stmtNode := range stmtNodes {
 		stmtText := strings.TrimSpace(stmtNode.Text())
 		slog.Debug("processing stmt", slog.String("stmt", stmtText))
 
 		switch stmt := stmtNode.(type) {
-		case *ast.DropTableStmt, *ast.TruncateTableStmt, *ast.DropDatabaseStmt, *ast.RenameTableStmt:
-			breakingStmt = append(breakingStmt, stmtText)
+		case *ast.DropDatabaseStmt:
+			changes.Databases.add(stmt.Name.String(), stmtText)
+
+		case *ast.DropTableStmt:
+			lo.ForEach(stmt.Tables, func(stmt *ast.TableName, _ int) { changes.Tables.add(stmt.Name.String(), stmtText) })
+
+		case *ast.TruncateTableStmt:
+			changes.Tables.add(stmt.Table.Name.String(), stmtText)
+
+		case *ast.RenameTableStmt:
+			lo.ForEach(stmt.TableToTables, func(ttt *ast.TableToTable, _ int) { changes.Tables.add(ttt.OldTable.Name.String(), stmtText) })
+
 		case *ast.AlterTableStmt:
 			for _, spec := range stmt.Specs {
 				if isBreakingAlterTableSpec(spec) {
-					breakingStmt = append(breakingStmt, stmtText)
+					changes.Tables.add(stmt.Table.Name.String(), stmtText)
 					break
 				}
 			}
 		}
+
 	}
 
-	return breakingStmt, nil
+	return changes, nil
 }
 
 func isBreakingAlterTableSpec(spec *ast.AlterTableSpec) bool {
