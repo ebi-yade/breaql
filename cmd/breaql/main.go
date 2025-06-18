@@ -62,6 +62,11 @@ func main_() error {
 		if err != nil {
 			return errors.Wrap(err, "error breaql.RunMySQL")
 		}
+	case "pg":
+		changes, err = breaql.RunPostgreSQL(string(ddl))
+		if err != nil {
+			return errors.Wrap(err, "error breaql.RunPostgreSQL")
+		}
 	default:
 		return errors.Errorf("unsupported driver: %s", input.Driver)
 	}

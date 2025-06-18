@@ -9,12 +9,14 @@ import (
 type BreakingChanges struct {
 	Tables    TableChanges    `json:"tables"`
 	Databases DatabaseChanges `json:"databases"`
+	Indexes   IndexChanges    `json:"indexes"`
 }
 
 func NewBreakingChanges() BreakingChanges {
 	return BreakingChanges{
 		Tables:    make(TableChanges),
 		Databases: make(DatabaseChanges),
+		Indexes:   make(IndexChanges),
 	}
 }
 
@@ -35,6 +37,12 @@ func (bc BreakingChanges) FormatSQL() string {
 	for _, database := range bc.Databases.Databases() {
 		builder.WriteString("-- Database: " + database + "\n")
 		for _, stmt := range bc.Databases.Statements(database) {
+			builder.WriteString("        " + stmt + "\n")
+		}
+	}
+	for _, index := range bc.Indexes.Indexes() {
+		builder.WriteString("-- Index: " + index + "\n")
+		for _, stmt := range bc.Indexes.Statements(index) {
 			builder.WriteString("        " + stmt + "\n")
 		}
 	}
@@ -82,4 +90,24 @@ func (dc DatabaseChanges) Statements(database string) []string {
 // Exist return if any changes exist.
 func (dc DatabaseChanges) Exist() bool {
 	return len(dc) > 0
+}
+
+type IndexChanges map[string][]string
+
+func (ic IndexChanges) add(index string, statements ...string) {
+	ic[index] = append(ic[index], statements...)
+}
+
+func (ic IndexChanges) Indexes() []string {
+	return lo.Keys(ic)
+}
+
+// Statements returns the breaking statements for the given index.
+func (ic IndexChanges) Statements(index string) []string {
+	return ic[index]
+}
+
+// Exist return if any changes exist.
+func (ic IndexChanges) Exist() bool {
+	return len(ic) > 0
 }
