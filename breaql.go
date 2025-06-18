@@ -22,7 +22,7 @@ func NewBreakingChanges() BreakingChanges {
 
 // Exist return if any changes exist.
 func (bc BreakingChanges) Exist() bool {
-	return bc.Tables.Exist() || bc.Databases.Exist()
+	return bc.Tables.Exist() || bc.Databases.Exist() || bc.Indexes.Exist()
 }
 
 // FormatSQL returns the breaking changes in SQL format.
