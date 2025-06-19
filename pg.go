@@ -10,6 +10,11 @@ import (
 
 // RunPostgreSQL parses the given DDL statements and returns the breaking ones.
 func RunPostgreSQL(sql string) (BreakingChanges, error) {
+	sql = strings.TrimSpace(sql)
+	if !strings.HasSuffix(sql, ";") {
+		sql += ";"
+	}
+
 	tree, err := pg_query.Parse(sql)
 	if err != nil {
 		return BreakingChanges{}, &ParseError{original: err, Message: err.Error(), funcName: "pg_query.Parse"}
@@ -19,16 +24,9 @@ func RunPostgreSQL(sql string) (BreakingChanges, error) {
 
 	for _, rawStmt := range tree.Stmts {
 		start := rawStmt.StmtLocation
-		end := rawStmt.StmtLocation + rawStmt.StmtLen
-		if start < 0 || end > int32(len(sql)) || start > end {
-			continue
-		}
-		stmtText := strings.TrimSpace(sql[start:end])
-		if stmtText == "" {
-			continue
-		}
-		stmtText += ";"
-		slog.Debug("processing stmt", slog.String("stmt", stmtText))
+		end := start + rawStmt.StmtLen
+		stmtText := strings.TrimSpace(sql[start:end]) + ";"
+		slog.Info("processing stmt", slog.String("stmt", stmtText))
 
 		node := rawStmt.Stmt
 		switch n := node.Node.(type) {
@@ -40,18 +38,28 @@ func RunPostgreSQL(sql string) (BreakingChanges, error) {
 			case pg_query.ObjectType_OBJECT_TABLE:
 				for _, obj := range n.DropStmt.Objects {
 					if list, ok := obj.Node.(*pg_query.Node_List); ok && len(list.List.Items) > 0 {
-						if str, ok := list.List.Items[0].Node.(*pg_query.Node_String_); ok {
-							changes.Tables.add(str.String_.GetSval(), stmtText)
+						var parts []string
+						for _, item := range list.List.Items {
+							if str, ok := item.Node.(*pg_query.Node_String_); ok {
+								parts = append(parts, str.String_.GetSval())
+							}
 						}
+						table := strings.Join(parts, ".")
+						changes.Tables.add(table, stmtText)
 					}
 				}
 
 			case pg_query.ObjectType_OBJECT_INDEX:
 				for _, obj := range n.DropStmt.Objects {
 					if list, ok := obj.Node.(*pg_query.Node_List); ok && len(list.List.Items) > 0 {
-						if str, ok := list.List.Items[0].Node.(*pg_query.Node_String_); ok {
-							changes.Indexes.add(str.String_.GetSval(), stmtText)
+						var parts []string
+						for _, item := range list.List.Items {
+							if str, ok := item.Node.(*pg_query.Node_String_); ok {
+								parts = append(parts, str.String_.GetSval())
+							}
 						}
+						index := strings.Join(parts, ".")
+						changes.Indexes.add(index, stmtText)
 					}
 				}
 			}
