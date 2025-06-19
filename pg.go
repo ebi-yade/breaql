@@ -22,19 +22,13 @@ func RunPostgreSQL(sql string) (BreakingChanges, error) {
 
 	changes := NewBreakingChanges()
 
-	for _, rawStmt := range tree.Stmts {
+	for _, rawStmt := range tree.GetStmts() {
 		start := rawStmt.GetStmtLocation()
 		end := start + rawStmt.GetStmtLen()
 		stmtText := strings.TrimSpace(sql[start:end]) + ";"
 		slog.Info("processing stmt", slog.String("stmt", stmtText))
 
-		node := rawStmt.GetStmt()
-		if node == nil {
-			slog.Warn("skipping empty statement", slog.String("stmt", stmtText))
-			continue
-		}
-
-		switch n := node.GetNode().(type) {
+		switch n := rawStmt.GetStmt().GetNode().(type) {
 		case *pg_query.Node_DropdbStmt:
 			changes.Databases.add(n.DropdbStmt.GetDbname(), stmtText)
 
