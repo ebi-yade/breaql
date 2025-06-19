@@ -23,25 +23,37 @@ func RunPostgreSQL(sql string) (BreakingChanges, error) {
 	changes := NewBreakingChanges()
 
 	for _, rawStmt := range tree.Stmts {
-		start := rawStmt.StmtLocation
-		end := start + rawStmt.StmtLen
+		start := rawStmt.GetStmtLocation()
+		end := start + rawStmt.GetStmtLen()
 		stmtText := strings.TrimSpace(sql[start:end]) + ";"
 		slog.Info("processing stmt", slog.String("stmt", stmtText))
 
-		node := rawStmt.Stmt
-		switch n := node.Node.(type) {
+		node := rawStmt.GetStmt()
+		if node == nil {
+			slog.Warn("skipping empty statement", slog.String("stmt", stmtText))
+			continue
+		}
+
+		switch n := node.GetNode().(type) {
 		case *pg_query.Node_DropdbStmt:
-			changes.Databases.add(n.DropdbStmt.Dbname, stmtText)
+			changes.Databases.add(n.DropdbStmt.GetDbname(), stmtText)
 
 		case *pg_query.Node_DropStmt:
 			switch n.DropStmt.RemoveType {
+			case pg_query.ObjectType_OBJECT_SCHEMA:
+				for _, obj := range n.DropStmt.GetObjects() {
+					if str := obj.GetString_(); str != nil {
+						changes.Schemas.add(str.GetSval(), stmtText)
+					}
+				}
+
 			case pg_query.ObjectType_OBJECT_TABLE:
-				for _, obj := range n.DropStmt.Objects {
-					if list, ok := obj.Node.(*pg_query.Node_List); ok && len(list.List.Items) > 0 {
+				for _, obj := range n.DropStmt.GetObjects() {
+					if list := obj.GetList(); list != nil && len(list.GetItems()) > 0 {
 						var parts []string
-						for _, item := range list.List.Items {
-							if str, ok := item.Node.(*pg_query.Node_String_); ok {
-								parts = append(parts, str.String_.GetSval())
+						for _, item := range list.GetItems() {
+							if str := item.GetString_(); str != nil {
+								parts = append(parts, str.GetSval())
 							}
 						}
 						table := strings.Join(parts, ".")
@@ -50,12 +62,12 @@ func RunPostgreSQL(sql string) (BreakingChanges, error) {
 				}
 
 			case pg_query.ObjectType_OBJECT_INDEX:
-				for _, obj := range n.DropStmt.Objects {
-					if list, ok := obj.Node.(*pg_query.Node_List); ok && len(list.List.Items) > 0 {
+				for _, obj := range n.DropStmt.GetObjects() {
+					if list := obj.GetList(); list != nil && len(list.GetItems()) > 0 {
 						var parts []string
-						for _, item := range list.List.Items {
-							if str, ok := item.Node.(*pg_query.Node_String_); ok {
-								parts = append(parts, str.String_.GetSval())
+						for _, item := range list.GetItems() {
+							if str := item.GetString_(); str != nil {
+								parts = append(parts, str.GetSval())
 							}
 						}
 						index := strings.Join(parts, ".")
@@ -65,21 +77,33 @@ func RunPostgreSQL(sql string) (BreakingChanges, error) {
 			}
 
 		case *pg_query.Node_TruncateStmt:
-			for _, rel := range n.TruncateStmt.Relations {
-				if rv, ok := rel.Node.(*pg_query.Node_RangeVar); ok {
-					changes.Tables.add(rv.RangeVar.Relname, stmtText)
+			for _, rel := range n.TruncateStmt.GetRelations() {
+				if rv := rel.GetRangeVar(); rv != nil {
+					table := rv.GetRelname()
+					if schema := rv.GetSchemaname(); schema != "" {
+						table = schema + "." + table
+					}
+					changes.Tables.add(table, stmtText)
 				}
 			}
 
 		case *pg_query.Node_RenameStmt:
-			if n.RenameStmt.Relation != nil {
-				changes.Tables.add(n.RenameStmt.Relation.Relname, stmtText)
+			if rv := n.RenameStmt.GetRelation(); rv != nil {
+				table := rv.GetRelname()
+				if schema := rv.GetSchemaname(); schema != "" {
+					table = schema + "." + table
+				}
+				changes.Tables.add(table, stmtText)
 			}
 
 		case *pg_query.Node_AlterTableStmt:
-			if n.AlterTableStmt.Relation != nil {
-				if slices.ContainsFunc(n.AlterTableStmt.Cmds, isBreakingAlterTableCmd) {
-					changes.Tables.add(n.AlterTableStmt.Relation.Relname, stmtText)
+			if rv := n.AlterTableStmt.GetRelation(); rv != nil {
+				if slices.ContainsFunc(n.AlterTableStmt.GetCmds(), isBreakingAlterTableCmd) {
+					table := rv.GetRelname()
+					if schema := rv.GetSchemaname(); schema != "" {
+						table = schema + "." + table
+					}
+					changes.Tables.add(table, stmtText)
 				}
 			}
 		}
@@ -89,9 +113,9 @@ func RunPostgreSQL(sql string) (BreakingChanges, error) {
 }
 
 func isBreakingAlterTableCmd(cmd *pg_query.Node) bool {
-	switch c := cmd.Node.(type) {
+	switch c := cmd.GetNode().(type) {
 	case *pg_query.Node_AlterTableCmd:
-		switch c.AlterTableCmd.Subtype {
+		switch c.AlterTableCmd.GetSubtype() {
 		case pg_query.AlterTableType_AT_DropColumn,
 			pg_query.AlterTableType_AT_DropConstraint,
 			pg_query.AlterTableType_AT_AlterColumnType:

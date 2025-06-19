@@ -25,64 +25,72 @@ func TestRunPostgreSQL(t *testing.T) {
 			expectsErr: false,
 		},
 		{
-			name: "DropTable",
-			sql:  "DROP TABLE test_table;",
+			name: "DropSchema",
+			sql:  "DROP SCHEMA test_schema;",
 			want: breaql.BreakingChanges{
-				Tables: breaql.TableChanges{"test_table": {"DROP TABLE test_table;"}},
+				Schemas: breaql.SchemaChanges{"test_schema": {"DROP SCHEMA test_schema;"}},
+			},
+			expectsErr: false,
+		},
+		{
+			name: "DropTable",
+			sql:  "DROP TABLE test_schema.test_table;",
+			want: breaql.BreakingChanges{
+				Tables: breaql.TableChanges{"test_schema.test_table": {"DROP TABLE test_schema.test_table;"}},
 			},
 			expectsErr: false,
 		},
 		{
 			name: "DropIndex",
-			sql:  "DROP INDEX test_index;",
+			sql:  "DROP INDEX test_schema.test_index;",
 			want: breaql.BreakingChanges{
-				Indexes: breaql.IndexChanges{"test_index": {"DROP INDEX test_index;"}},
+				Indexes: breaql.IndexChanges{"test_schema.test_index": {"DROP INDEX test_schema.test_index;"}},
 			},
 			expectsErr: false,
 		},
 		{
 			name: "TruncateTable",
-			sql:  "TRUNCATE TABLE test_table;",
+			sql:  "TRUNCATE TABLE test_schema.test_table;",
 			want: breaql.BreakingChanges{
-				Tables: breaql.TableChanges{"test_table": {"TRUNCATE TABLE test_table;"}},
+				Tables: breaql.TableChanges{"test_schema.test_table": {"TRUNCATE TABLE test_schema.test_table;"}},
 			},
 			expectsErr: false,
 		},
 		{
-			name: "RenameTable",
-			sql:  "ALTER TABLE test_table_old RENAME TO test_table_new;",
+			name: "AlterTableRename",
+			sql:  "ALTER TABLE test_schema.test_table_old RENAME TO test_table_new;",
 			want: breaql.BreakingChanges{
-				Tables: breaql.TableChanges{"test_table_old": {"ALTER TABLE test_table_old RENAME TO test_table_new;"}},
+				Tables: breaql.TableChanges{"test_schema.test_table_old": {"ALTER TABLE test_schema.test_table_old RENAME TO test_table_new;"}},
 			},
 			expectsErr: false,
 		},
 		{
 			name: "AlterTableDropColumn",
-			sql:  "ALTER TABLE test_table DROP COLUMN column_name;",
+			sql:  "ALTER TABLE test_schema.test_table DROP COLUMN column_name;",
 			want: breaql.BreakingChanges{
-				Tables: breaql.TableChanges{"test_table": {"ALTER TABLE test_table DROP COLUMN column_name;"}},
+				Tables: breaql.TableChanges{"test_schema.test_table": {"ALTER TABLE test_schema.test_table DROP COLUMN column_name;"}},
 			},
 			expectsErr: false,
 		},
 		{
 			name: "AlterTableDropConstraint",
-			sql:  "ALTER TABLE test_table DROP CONSTRAINT constraint_name;",
+			sql:  "ALTER TABLE test_schema.test_table DROP CONSTRAINT constraint_name;",
 			want: breaql.BreakingChanges{
-				Tables: breaql.TableChanges{"test_table": {"ALTER TABLE test_table DROP CONSTRAINT constraint_name;"}},
+				Tables: breaql.TableChanges{"test_schema.test_table": {"ALTER TABLE test_schema.test_table DROP CONSTRAINT constraint_name;"}},
 			},
 			expectsErr: false,
 		},
 		{
 			name: "AlterTableAlterColumn",
-			sql:  "ALTER TABLE test_table ALTER COLUMN column_name TYPE VARCHAR(255);",
+			sql:  "ALTER TABLE test_schema.test_table ALTER COLUMN column_name TYPE VARCHAR(255);",
 			want: breaql.BreakingChanges{
-				Tables: breaql.TableChanges{"test_table": {"ALTER TABLE test_table ALTER COLUMN column_name TYPE VARCHAR(255);"}},
+				Tables: breaql.TableChanges{"test_schema.test_table": {"ALTER TABLE test_schema.test_table ALTER COLUMN column_name TYPE VARCHAR(255);"}},
 			},
 			expectsErr: false,
 		},
 		{
 			name:       "CreateTable",
-			sql:        "CREATE TABLE test_table (id INT PRIMARY KEY);",
+			sql:        "CREATE TABLE test_schema.test_table (id INT PRIMARY KEY);",
 			want:       breaql.BreakingChanges{},
 			expectsErr: false,
 		},
@@ -90,12 +98,14 @@ func TestRunPostgreSQL(t *testing.T) {
 			name: "MultipleStatementsWithBreakingChanges",
 			sql: `CREATE TABLE test_table (id INT PRIMARY KEY);
 				ALTER TABLE test_table DROP COLUMN id;
-				DROP DATABASE test_db;
-				DROP INDEX test_index;`,
+				DROP INDEX test_index;
+				DROP SCHEMA test_schema;
+				DROP DATABASE test_db;`,
 			want: breaql.BreakingChanges{
 				Tables:    breaql.TableChanges{"test_table": {"ALTER TABLE test_table DROP COLUMN id;"}},
-				Databases: breaql.DatabaseChanges{"test_db": {"DROP DATABASE test_db;"}},
 				Indexes:   breaql.IndexChanges{"test_index": {"DROP INDEX test_index;"}},
+				Schemas:   breaql.SchemaChanges{"test_schema": {"DROP SCHEMA test_schema;"}},
+				Databases: breaql.DatabaseChanges{"test_db": {"DROP DATABASE test_db;"}},
 			},
 			expectsErr: false,
 		},
@@ -105,9 +115,14 @@ func TestRunPostgreSQL(t *testing.T) {
 				ALTER TABLE test_table ADD COLUMN new_column INT;
 				ALTER TABLE test_table DROP COLUMN id;
 				ALTER TABLE test_table DROP COLUMN new_column;
-				ALTER TABLE test_table ADD INDEX idx_new_column (new_column);`,
+				CREATE INDEX idx_new_column ON test_table (new_column);`,
 			want: breaql.BreakingChanges{
-				Tables: breaql.TableChanges{"test_table": {"ALTER TABLE test_table DROP COLUMN id;", "ALTER TABLE test_table DROP COLUMN new_column;"}},
+				Tables: breaql.TableChanges{
+					"test_table": {
+						"ALTER TABLE test_table DROP COLUMN id;",
+						"ALTER TABLE test_table DROP COLUMN new_column;",
+					},
+				},
 			},
 			expectsErr: false,
 		},
