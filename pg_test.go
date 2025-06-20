@@ -127,6 +127,22 @@ func TestRunPostgreSQL(t *testing.T) {
 			expectsErr: false,
 		},
 		{
+			name: "MultipleStatementsWithLastSemicolonOmitted",
+			sql: `CREATE TABLE test_table (id INT PRIMARY KEY);
+				ALTER TABLE test_table ADD COLUMN new_column INT;
+				ALTER TABLE test_table DROP COLUMN id;
+				ALTER TABLE test_table DROP COLUMN new_column`,
+			want: breaql.BreakingChanges{
+				Tables: breaql.TableChanges{
+					"test_table": {
+						"ALTER TABLE test_table DROP COLUMN id;",
+						"ALTER TABLE test_table DROP COLUMN new_column;",
+					},
+				},
+			},
+			expectsErr: false,
+		},
+		{
 			name:       "InvalidSQL",
 			sql:        "INVALID SQL STATEMENT;",
 			expectsErr: true,
