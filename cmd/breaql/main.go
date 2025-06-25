@@ -12,7 +12,7 @@ import (
 )
 
 type Input struct {
-	Driver   string `name:"driver" default:"mysql" help:"Database driver"`
+	Driver   string `name:"driver" default:"mysql" help:"Database driver (mysql, pg)"`
 	Path     string `name:"path" default:"-" help:"Path to the SQL file"`
 	LogLevel string `name:"log-level" default:"info" help:"Log level"`
 }

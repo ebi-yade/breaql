@@ -28,7 +28,7 @@ echo '
           ALTER TABLE users DROP COLUMN age;
           DROP TABLE users;
           DROP DATABASE foo;
-  ' | go run breaql --driver mysql
+  ' | breaql --driver mysql
 ```
 
 And then you will see the output like this:
